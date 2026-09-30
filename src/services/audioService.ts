@@ -1,54 +1,86 @@
 import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let playerInstance: AudioPlayer | null = null;
+let currentSourceUri: string | null = null;
 
-// Reliable high-frequency wake-up alarm tone
-const ALARM_SOUND_URL =
+export const STORAGE_KEYS_AUDIO = {
+  CUSTOM_ALARM_URI: '@wake_me_up_custom_alarm_uri',
+  CUSTOM_ALARM_NAME: '@wake_me_up_custom_alarm_name',
+};
+
+// Nada alarm standar bawaan (sirine digital kencang)
+export const DEFAULT_ALARM_URL =
   'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg';
 
 /**
- * Initializes and loops the alarm audio using modern expo-audio (SDK 57)
+ * Memutar suara alarm secara berulang (looping) di background dan silent mode.
+ * Jika pengguna memilih lagu sendiri, lagu tersebut yang akan diputar.
  */
-export async function playContinuousAlarm(): Promise<void> {
+export async function playContinuousAlarm(customUri?: string | null): Promise<void> {
   try {
-    if (playerInstance && playerInstance.playing) {
+    let audioToPlay = customUri;
+
+    // Jika customUri tidak diberikan langsung, cek apakah tersimpan di AsyncStorage
+    if (!audioToPlay) {
+      audioToPlay = await AsyncStorage.getItem(STORAGE_KEYS_AUDIO.CUSTOM_ALARM_URI);
+    }
+
+    const targetSource = audioToPlay || DEFAULT_ALARM_URL;
+
+    // Jika sedang memutar lagu yang sama, biarkan terus berjalan
+    if (playerInstance && playerInstance.playing && currentSourceUri === targetSource) {
       return;
     }
 
-    // Configure system audio mode: allow background playback & ignore silent switch
+    // Hentikan player lama jika ada
+    if (playerInstance) {
+      playerInstance.pause();
+    }
+
+    // Konfigurasi audio system: tetap berbunyi saat layar mati dan abaikan mode silent
     await setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
     });
 
-    if (!playerInstance) {
-      playerInstance = createAudioPlayer(ALARM_SOUND_URL);
+    try {
+      playerInstance = createAudioPlayer(targetSource);
+      currentSourceUri = targetSource;
       playerInstance.loop = true;
       playerInstance.volume = 1.0;
+      playerInstance.play();
+    } catch (err) {
+      console.warn('[AudioService] Gagal memutar custom audio, beralih ke alarm default:', err);
+      // Fallback ke alarm bawaan jika file custom bermasalah
+      playerInstance = createAudioPlayer(DEFAULT_ALARM_URL);
+      currentSourceUri = DEFAULT_ALARM_URL;
+      playerInstance.loop = true;
+      playerInstance.volume = 1.0;
+      playerInstance.play();
     }
-
-    playerInstance.play();
   } catch (error) {
-    console.error('[AudioService] Failed to play continuous alarm:', error);
+    console.error('[AudioService] Error saat memutar alarm:', error);
   }
 }
 
 /**
- * Stops and silences the continuous alarm audio
+ * Menghentikan bunyi alarm
  */
 export async function stopContinuousAlarm(): Promise<void> {
   try {
     if (playerInstance) {
       playerInstance.pause();
       playerInstance.seekTo(0);
+      currentSourceUri = null;
     }
   } catch (error) {
-    console.error('[AudioService] Failed to stop alarm sound:', error);
+    console.error('[AudioService] Error saat menghentikan alarm:', error);
   }
 }
 
 /**
- * Returns whether the alarm audio is currently playing
+ * Mengecek apakah audio alarm sedang berbunyi
  */
 export async function isAlarmSoundPlaying(): Promise<boolean> {
   return playerInstance ? playerInstance.playing : false;

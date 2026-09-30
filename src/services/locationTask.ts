@@ -11,11 +11,15 @@ export const STORAGE_KEYS = {
   TARGET_LAT: '@wake_me_up_target_lat',
   TARGET_LON: '@wake_me_up_target_lon',
   TARGET_RADIUS: '@wake_me_up_target_radius_km',
+  TARGET_NAME: '@wake_me_up_target_name',
   IS_ALARM_TRIGGERED: '@wake_me_up_alarm_triggered',
   CURRENT_DISTANCE: '@wake_me_up_current_distance',
   TRACKING_ACTIVE: '@wake_me_up_tracking_active',
   CURRENT_LAT: '@wake_me_up_current_lat',
   CURRENT_LON: '@wake_me_up_current_lon',
+  CURRENT_SPEED: '@wake_me_up_current_speed',
+  CUSTOM_ALARM_URI: '@wake_me_up_custom_alarm_uri',
+  CUSTOM_ALARM_NAME: '@wake_me_up_custom_alarm_name',
 };
 
 interface LocationTaskData {
@@ -23,12 +27,12 @@ interface LocationTaskData {
 }
 
 /**
- * Top-level background task registration.
- * Defined outside the React component lifecycle so headless background workers can run it.
+ * Task pelacakan lokasi latar belakang (Background Worker).
+ * Berjalan independen dari lifecycle React saat aplikasi di-minimize atau layar mati.
  */
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) {
-    console.error(`[${LOCATION_TASK_NAME}] Task execution error:`, error.message);
+    console.error(`[${LOCATION_TASK_NAME}] Kesalahan task latar belakang:`, error.message);
     return;
   }
 
@@ -40,7 +44,19 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   const latestLocation = locations[locations.length - 1].coords;
 
   try {
-    // 1. Read destination and alarm state from AsyncStorage
+    // 1. Simpan koordinat dan kecepatan real-time
+    const currentSpeedKmh =
+      latestLocation.speed !== null && latestLocation.speed !== undefined && latestLocation.speed > 0
+        ? (latestLocation.speed * 3.6).toFixed(1)
+        : '0';
+
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.CURRENT_LAT, latestLocation.latitude.toString()],
+      [STORAGE_KEYS.CURRENT_LON, latestLocation.longitude.toString()],
+      [STORAGE_KEYS.CURRENT_SPEED, currentSpeedKmh],
+    ]);
+
+    // 2. Baca parameter tujuan dan status alarm
     const [targetLatVal, targetLonVal, radiusVal, isTriggeredVal] =
       await AsyncStorage.multiGet([
         STORAGE_KEYS.TARGET_LAT,
@@ -54,17 +70,11 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const radiusKm = radiusVal[1] ? parseFloat(radiusVal[1]) : null;
     const isTriggered = isTriggeredVal[1] === 'true';
 
-    // Save live user coordinates for UI
-    await AsyncStorage.multiSet([
-      [STORAGE_KEYS.CURRENT_LAT, latestLocation.latitude.toString()],
-      [STORAGE_KEYS.CURRENT_LON, latestLocation.longitude.toString()],
-    ]);
-
     if (targetLat === null || targetLon === null || radiusKm === null) {
       return;
     }
 
-    // 2. Compute Haversine distance
+    // 3. Hitung jarak terkini menggunakan rumus Haversine
     const distanceKm = calculateHaversineDistanceKm(
       latestLocation.latitude,
       latestLocation.longitude,
@@ -72,23 +82,23 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       targetLon
     );
 
-    // Save live distance for UI
+    // Simpan sisa jarak untuk ditampilkan di UI
     await AsyncStorage.setItem(
       STORAGE_KEYS.CURRENT_DISTANCE,
       distanceKm.toFixed(2)
     );
 
     console.log(
-      `[WakeMeUp Background] Live Distance: ${distanceKm.toFixed(2)} km | Target Radius: ${radiusKm} km`
+      `[WakeMeUp Latar Belakang] Sisa Jarak: ${distanceKm.toFixed(2)} km | Radius Bangun: ${radiusKm} km | Kec: ${currentSpeedKmh} km/jam`
     );
 
-    // 3. Trigger alarm if inside target radius and not already triggered
+    // 4. Jika jarak <= radius bangun dan alarm belum berdering
     if (distanceKm <= radiusKm && !isTriggered) {
       await AsyncStorage.setItem(STORAGE_KEYS.IS_ALARM_TRIGGERED, 'true');
       await triggerAlarmNotification(distanceKm);
       await playContinuousAlarm();
     }
   } catch (err) {
-    console.error(`[${LOCATION_TASK_NAME}] Error processing location data:`, err);
+    console.error(`[${LOCATION_TASK_NAME}] Gagal memproses update lokasi:`, err);
   }
 });

@@ -5,7 +5,7 @@ export const ALARM_NOTIFICATION_CHANNEL_ID = 'wake-up-alarm-channel';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 
-// Only load expo-notifications when NOT in Expo Go (to avoid SDK 53+ Android crash)
+// Hanya import expo-notifications jika bukan di Expo Go (menghindari crash SDK 53+ di Android)
 if (!isRunningInExpoGo()) {
   try {
     Notifications = require('expo-notifications');
@@ -20,12 +20,12 @@ if (!isRunningInExpoGo()) {
       }),
     });
   } catch (e) {
-    console.warn('[NotificationService] Could not load expo-notifications:', e);
+    console.warn('[NotificationService] Gagal memuat expo-notifications:', e);
   }
 }
 
 /**
- * Creates high-priority notification channel for Android (heads-up notification).
+ * Menyiapkan channel notifikasi prioritas tinggi untuk Android (heads-up pop-up).
  */
 export async function setupNotificationChannel(): Promise<void> {
   if (isRunningInExpoGo() || !Notifications) {
@@ -34,8 +34,8 @@ export async function setupNotificationChannel(): Promise<void> {
   if (Platform.OS === 'android') {
     try {
       await Notifications.setNotificationChannelAsync(ALARM_NOTIFICATION_CHANNEL_ID, {
-        name: 'Wake Up Alarm',
-        description: 'Loud alert triggered when you are within your destination radius',
+        name: 'Alarm Bangun Tidur',
+        description: 'Peringatan keras saat mendekati radius tujuan perjalanan Anda',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 250, 500, 250, 1000],
         lightColor: '#EF4444',
@@ -44,26 +44,26 @@ export async function setupNotificationChannel(): Promise<void> {
         sound: 'default',
       });
     } catch (e) {
-      console.warn('[NotificationService] Error creating channel:', e);
+      console.warn('[NotificationService] Gagal membuat channel notifikasi:', e);
     }
   }
 }
 
 /**
- * Triggers an immediate maximum priority notification to wake the screen.
+ * Memicu notifikasi darurat prioritas maksimal untuk membangunkan layar HP.
  */
 export async function triggerAlarmNotification(distanceKm: number): Promise<void> {
   if (isRunningInExpoGo() || !Notifications) {
     console.log(
-      `[WakeMeUp Expo Go] Notification simulated: ${distanceKm.toFixed(2)} km to destination!`
+      `[WakeMeUp Expo Go] Notifikasi simulasi: ${distanceKm.toFixed(2)} km lagi sampai tujuan!`
     );
     return;
   }
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '🚨 WAKE UP! You are near your stop!',
-        body: `You are approximately ${distanceKm.toFixed(2)} km from your destination!`,
+        title: '🚨 BANGUN! SUDAH DEKAT TUJUAN!',
+        body: `Kamu sudah berada sekitar ${distanceKm.toFixed(2)} km dari tujuan perjalananmu!`,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority.MAX,
         color: '#EF4444',
@@ -72,16 +72,16 @@ export async function triggerAlarmNotification(distanceKm: number): Promise<void
       trigger: null,
     });
   } catch (e) {
-    console.warn('[NotificationService] Error triggering notification:', e);
+    console.warn('[NotificationService] Gagal memicu notifikasi:', e);
   }
 }
 
 /**
- * Safely requests notification permissions
+ * Meminta izin notifikasi dengan aman
  */
 export async function requestNotificationPermissionSafely(): Promise<boolean> {
   if (isRunningInExpoGo() || !Notifications) {
-    return true; // Skip in Expo Go
+    return true;
   }
   try {
     const { status } = await Notifications.requestPermissionsAsync();
