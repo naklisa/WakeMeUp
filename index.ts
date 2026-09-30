@@ -1,5 +1,7 @@
-import { registerRootComponent } from 'expo';
+// Register background task definition at global module scope
+import './src/services/locationTask';
 
+import { registerRootComponent } from 'expo';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
